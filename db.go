@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -143,6 +145,10 @@ func (o Options) renameStatements() []string {
 func PreviewSQL(o Options) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "-- Demo schema: %s (%s)\n\n", strings.Join(o.SchemaNames(), ", "), o.Template.Name)
+	for _, ext := range o.Template.Extensions {
+		fmt.Fprintf(&b, "-- Needs the extension %s in this database; pgdemo checks it before creating anything\n"+
+			"-- and uses the schema it is installed in.\n\n", extensionLabel(ext))
+	}
 	for _, name := range o.SchemaNames() {
 		if o.DropExisting {
 			fmt.Fprintf(&b, "DROP SCHEMA IF EXISTS %s CASCADE;\n", identOf(name))
@@ -236,6 +242,10 @@ func Run(ctx context.Context, o Options, r Reporter) error {
 		}
 	}
 
+	if err := checkExtensions(ctx, t, o, r); err != nil {
+		return err
+	}
+
 	for _, name := range o.SchemaNames() {
 		var exists bool
 		if err := t.QueryRow(ctx,
@@ -326,4 +336,65 @@ func Run(ctx context.Context, o Options, r Reporter) error {
 
 	step(fmt.Sprintf("Done in %s", time.Since(start).Round(time.Millisecond)))
 	return nil
+}
+
+// ExtensionError: an extension the template needs is missing or too old.
+// Nothing was created (the command line returns exit code 2).
+type ExtensionError struct{ msg string }
+
+func (e *ExtensionError) Error() string { return e.msg }
+
+// extensionMinMajor is the oldest major version a template may use.
+var extensionMinMajor = map[string]int{"postgis": 3}
+
+func extensionLabel(ext string) string {
+	if ext == "postgis" {
+		return "PostGIS (3.0 or newer)"
+	}
+	return ext
+}
+
+// checkExtensions makes sure the extensions of the template are installed in
+// the database, and puts their schemas on the search path of this transaction,
+// so their types and functions (geometry, ST_Contains) are found wherever the
+// administrator installed them. Everything pgdemo creates is schema-qualified.
+func checkExtensions(ctx context.Context, t pgx.Tx, o Options, r Reporter) error {
+	var schemas []string
+	for _, ext := range o.Template.Extensions {
+		var schema, version string
+		err := t.QueryRow(ctx, `SELECT n.nspname, e.extversion FROM pg_extension e
+JOIN pg_namespace n ON n.oid = e.extnamespace WHERE e.extname = $1`, ext).Scan(&schema, &version)
+		if errors.Is(err, pgx.ErrNoRows) {
+			var avail string
+			err := t.QueryRow(ctx, "SELECT coalesce(default_version, '') FROM pg_available_extensions WHERE name = $1", ext).Scan(&avail)
+			switch {
+			case errors.Is(err, pgx.ErrNoRows):
+				return &ExtensionError{fmt.Sprintf("template %s needs %s, which is not installed on this server: "+
+					"the server administrator installs the %s package for this PostgreSQL version, then a superuser "+
+					"runs CREATE EXTENSION %s; in database %s", o.Template.Name, extensionLabel(ext), ext, ext, o.Conn.Database)}
+			case err != nil:
+				return err
+			}
+			return &ExtensionError{fmt.Sprintf("template %s needs %s in database %s: it is available on the server "+
+				"(version %s) but not installed in this database; a superuser runs CREATE EXTENSION %s; in it",
+				o.Template.Name, extensionLabel(ext), o.Conn.Database, avail, ext)}
+		}
+		if err != nil {
+			return err
+		}
+		if min, ok := extensionMinMajor[ext]; ok {
+			major, _ := strconv.Atoi(strings.SplitN(version, ".", 2)[0])
+			if major < min {
+				return &ExtensionError{fmt.Sprintf("template %s needs %s; database %s has %s %s: "+
+					"update it (ALTER EXTENSION %s UPDATE)", o.Template.Name, extensionLabel(ext), o.Conn.Database, ext, version, ext)}
+			}
+		}
+		r.Log(fmt.Sprintf("Extension %s %s found in schema %s", ext, version, schema))
+		schemas = append(schemas, identOf(schema))
+	}
+	if len(schemas) == 0 {
+		return nil
+	}
+	_, err := t.Exec(ctx, "SET LOCAL search_path TO "+strings.Join(schemas, ", "))
+	return err
 }

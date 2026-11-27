@@ -1,17 +1,73 @@
 # TODO – pgdemo
 
-Status of 2026-11-20. pgTestBuilder has its own TODO (`pgTestBuilder/TODO.md` on the stick).
+Status of 2026-11-26. pgTestBuilder has its own TODO (`pgTestBuilder/TODO.md` on the stick).
 
 ## Open
 
 None.
 
-**Next release: pgdemo 1.0.4** (`build/VERSION` is 1.0.4, work started 2026-11-19;
-1.0.3 is released in `releases/pgdemo/1.0.3/`). In it so far:
+**Next release: pgdemo 1.0.5** (`build/VERSION` is 1.0.5, work started 2026-11-26;
+1.0.4 is released in `releases/pgdemo/1.0.4/`). In it so far: nothing yet.
+
+**Released: pgdemo 1.0.4** (frozen 2026-11-26, `releases/pgdemo/1.0.4/`, see
+`RELEASE-1.0.4.md`). Packages built by Robert on 2026-11-26 and in the release folder with
+checksums (all OK). Checked: the Linux package unpacks without warnings and has no macOS file
+attributes; Info.plist and FIRST_START.txt say 1.0.4 and FIRST_START.txt lists Nibble mini and
+PostGIS municipality; the README in the packages has both templates and "Sizes and row counts";
+all three programs contain the two templates, the PostGIS check, the About window and the
+version 1.0.4 as a value of their own.
+**Still to check on a database (known points of 1.0.4):** PostGIS municipality on the new
+server with PostGIS 3.4; Nibble mini with "Parent only" in pgTestBuilder. Contents of 1.0.4:
 - **README: "Sizes and row counts"** (2026-11-20): total rows per template for Small, Medium,
   Large, 100,000, 1,000,000 and 10,000,000, and the rows per unit of size; the counts depend only
   on template and size, not on the seed; country versions the same as the Dutch templates.
   Numbers generated from the template code (not typed).
+- **New template "PostGIS municipality"** (built 2026-11-25, `postgis.go`; NL only; for PostGIS
+  3.4, later also 3.6.2): a fictional municipality (Nibbelstad, 9 × 9 km) in RD New
+  (EPSG:28992): `districts`, `streets`, `buildings`, `addresses`, `owners` (BSN), `parcels`,
+  `parks`, `water`, `sensors`, `sensor_readings`, `vehicles`, `gps_tracks`; GiST indexes; views
+  `district_overview`, `address_nearest_sensor`, `vehicle_kilometres`. Random but valid
+  geometry inside the municipality; address in its building, building in its parcel and
+  district. About 7.1 rows per unit (Medium 7,136).
+  New in `db.go`: `Template.Extensions`; before anything is made, pgdemo checks that the
+  extension is installed in the database (and PostGIS is 3.0 or newer), logs its version and
+  schema and puts that schema on the search path of the transaction; otherwise it stops with
+  what to do (CREATE EXTENSION by a superuser, or the PostGIS package on the server). Command
+  line: exit code 2 for a missing extension. Preview: a note that PostGIS is needed.
+  Tested in the sandbox with Go 1.24 (pgx and Fyne replaced by compile-only stand-ins, so
+  `db.go` is type-checked): valid EWKT, closed simple rings, everything inside the municipality,
+  the containments, foreign key values, unique parcel numbers / plates / BSN, readings in range,
+  the extension check (installed, other schema, available but not installed, not on the
+  server, too old), CLI exit code 2 and the preview; the other templates unchanged.
+  Still to check by Robert on the new server with PostGIS 3.4: `go build`, create the
+  template (window and command line), the views, and once without PostGIS (the message).
+- **New template "Nibble mini"** (built 2026-11-26, `nibble_mini.go`; agreed design): a smaller
+  Nibble (11 tables) for testing the table class "Parent only" in pgTestBuilder (1.4.1).
+  `addresses` is a customer's address book (`customer_id`) that orders (delivery address),
+  shipments, invoices, employees, suppliers and warehouses also point to; 80% of the orders to
+  an own address, 20% to another customer's address; shipments to the order's delivery address,
+  invoices to the customer's own address. On `addresses` also `created_by` (employee id, no
+  foreign key: a virtual FK on a Parent only table). About 20.8 rows per unit (Medium 20,770). NL only. Adjusted the same day on Robert's
+  request: without the view `address_usage` and the tables `payments`, `regions` and
+  `countries` (and so without `addresses.region_id`); 14 -> 11 tables. Later that day also
+  without `addresses.previous_address_id` (the self reference).
+  Tested in the sandbox: every foreign key value exists, unique columns, the share of orders to
+  another customer's address (~19% at Medium), shipments and invoices to the right address,
+  no foreign key on `created_by`; the other templates unchanged.
+  To check by Robert: `go build`, create it, then in pgTestBuilder customers driving with
+  addresses on Follow and on Parent only.
+- **About window** (built 2026-11-26; as in QNibbler and pgTestBuilder): menu Help → About pgdemo
+  (macOS menu bar; a menu row on Windows and Linux). Icon, "pgdemo <version>", "Nibble-IT – demo
+  schemas with generated data for PostgreSQL", the Nibbler animation
+  (`internal/nibbler/nibbler.go` copied unchanged from pgTestBuilder), "Coded with love by
+  Robert de Laat – www.nibble-it.nl", and in small print: the connection and server (or "Not
+  connected"), the number of templates, the command line, "the connection is remembered without
+  the password". New: `ui_about.go`; `ui.go` keeps the server version of the connection;
+  `main.go` sets the menu. Checked in the sandbox: the animation package builds (also for
+  Windows) and draws its frames; `ui_about.go` uses the same Fyne calls as pgTestBuilder's
+  (both Fyne 2.8.2) but could not be compiled here (no Fyne).
+  Tested by Robert 2026-11-26: builds, works and looks good.
+  The source archive includes the folder `internal/` (done for 1.0.4; keep it in later freezes).
 
 **Released: pgdemo 1.0.3** (frozen 2026-11-19, `releases/pgdemo/1.0.3/`, see
 `RELEASE-1.0.3.md`). Packages built by Robert on 2026-11-19 and in the release folder with
@@ -98,6 +154,9 @@ Contents of 1.0.2:
 
 ## Done and tested
 
+- **Release pgdemo 1.0.4** (2026-11-26): templates PostGIS municipality and Nibble mini, the
+  About window, README "Sizes and row counts"; sources, packages and checksums in
+  `releases/pgdemo/1.0.4/`.
 - **Release pgdemo 1.0.3** (2026-11-19): the command line (`pgdemo create`, `templates`, `help`,
   `version`); sources, packages and checksums in `releases/pgdemo/1.0.3/`.
 - **Release pgdemo 1.0.2** (2026-11-19): template Nibble secure history (BE / DE / UK), the

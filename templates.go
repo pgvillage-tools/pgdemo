@@ -29,6 +29,7 @@ type Template struct {
 	Views       []string
 	Locale      string   // country of the personal values ("" = NL), see locale.go
 	Renames     []Rename // column renames at the end (local column names)
+	Extensions  []string // extensions the database must have, e.g. "postgis" (checked before anything is made)
 }
 
 // schemaRef is the placeholder for a table's schema: {s} or {s_<suffix>}.
@@ -60,7 +61,7 @@ func uidxs(schema, table string, cols ...string) string {
 }
 
 var Templates = func() []*Template {
-	ts := []*Template{webshop(), hr(), library(), school(), nibble(), nibbleSecure(), nibbleSecureHistory(), nibbleEnterprise()}
+	ts := []*Template{webshop(), hr(), library(), school(), nibble(), nibbleMini(), nibbleSecure(), nibbleSecureHistory(), nibbleEnterprise(), postgisMunicipality()}
 	for _, mk := range []func() *Template{nibbleSecure, nibbleSecureHistory, nibbleEnterprise} {
 		for _, loc := range templateLocales {
 			ts = append(ts, localized(mk(), loc))

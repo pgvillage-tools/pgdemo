@@ -45,6 +45,7 @@ type appUI struct {
 	connLabel *widget.Label
 	connected bool
 	lastGood  ConnSettings // last settings that connected successfully
+	server    string       // version() of that server, for the About window
 
 	connBtn, previewBtn, createBtn, cancelBtn *widget.Button
 	cancel                                    context.CancelFunc
@@ -379,6 +380,7 @@ func (u *appUI) connect(retry func()) {
 			}
 			u.connected = true
 			u.lastGood = c
+			u.server = v
 			u.savePrefs()
 			u.connLabel.SetText(fmt.Sprintf("%s@%s:%s/%s  (sslmode=%s)", c.User, c.Host, c.Port, c.Database, c.SSLMode))
 			u.log("Connected: " + v)

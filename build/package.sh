@@ -80,8 +80,9 @@ copy_docs() {
 pgdemo $VERSION - PostgreSQL Demo Schema Builder
 
 Creates demo schemas with generated data in a PostgreSQL database
-(Webshop, HR, Library, School, Nibble, Nibble secure, Nibble secure history,
-Nibble enterprise, and their country versions BE, DE and UK).
+(Webshop, HR, Library, School, Nibble, Nibble mini, Nibble secure, Nibble secure history,
+Nibble enterprise - the last three also as BE, DE and UK - and PostGIS municipality,
+which needs PostGIS 3 in the database).
 The connection details are asked when the app starts; see docs/README.md.
 Everything runs in one transaction: on an error or cancel nothing is left behind.
 Without the window: pgdemo create --template <template> --schema <name> ...

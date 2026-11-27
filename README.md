@@ -4,6 +4,7 @@ Desktop app that creates a demo schema in a PostgreSQL database.
 
 ## Choices in the app
 
+- **Help → About**: version, the Nibbler animation and the current connection (on macOS in the menu bar).
 - **Connection**: a login popup at startup asks for host, port, database, user, password and SSL mode. Click **Change connection...** at the top of the window to switch to a different database later.
 - **Schema name**: for example `demo`.
 - **Schema type**:
@@ -16,6 +17,19 @@ Desktop app that creates a demo schema in a PostgreSQL database.
     (departments <-> employees, deferrable), M:N junctions, CASCADE / SET NULL, skewed data,
     a polymorphic table without FKs (attachments) and a table without relations (app_settings).
     The view `fk_graph` lists every foreign key in the schema. Code: `nibble.go`.
+  - Nibble mini: a smaller Nibble (11 tables) for testing the table class **Parent only** in
+    pgTestBuilder. Its centre is `addresses`: a customer's address book (`addresses.customer_id`)
+    that `orders` (delivery address), `shipments`, `invoices`, `employees`, `suppliers` and
+    `warehouses` also point to. 80% of the orders go to an address of their own customer, 20% to
+    an address of another customer (a gift, a drop shipment); shipments go to the delivery
+    address of their order, invoices to the customer's own address.
+    - With `customers` as driving table and `addresses` on Follow, the selection goes down to the
+      addresses of the driving customers and from there to every order, shipment and invoice to
+      those addresses, also of other customers, and keeps growing. With `addresses` on Parent
+      only, addresses only come as the address of selected rows, with their own parent (the
+      owner).
+    - Also on `addresses`: `created_by`, an employee id without a foreign key (a virtual FK on a
+      table that is Parent only). Lookup: `departments`. No views. Code: `nibble_mini.go`.
   - Nibble secure: Nibble plus sensitive data, for testing data masking (pgTestBuilder). Use schema
     name `nibble_secure`. Adds `persons` with the BSN (valid 11-check) as natural primary key,
     referenced by `customer_contacts.person_bsn` and `employees.bsn` (UNIQUE), and `vehicles.driver_bsn`
@@ -64,6 +78,28 @@ Desktop app that creates a demo schema in a PostgreSQL database.
     Size: about 142 rows per unit (Medium: 142,000; size 1,000,000: about 142 million, of which
     52 million in the core, 74 million in hr and 16 million in fleet).
     Drop existing schema drops all three. Code: `nibble_enterprise.go`.
+  - PostGIS municipality: the geography of a fictional Dutch municipality (Nibbelstad, 9 × 9 km)
+    in RD New (**EPSG:28992**, metres). Needs **PostGIS 3** in the database (made for 3.4).
+    - Tables with geometry: `districts` (6 × 6 grid of neighbourhood polygons), `streets`
+      (linestrings with name, type and speed limit), `buildings` (footprint polygons with year of
+      construction, use and floors), `addresses` (points with street, number, postcode),
+      `parcels` (cadastral parcels with parcel number, area and owner), `parks` and `water`
+      (polygons), `sensors` (air quality, noise and traffic points) and `gps_tracks` (routes of
+      municipal vehicles as linestrings). Without geometry: `owners` (persons with BSN, name,
+      birth date, e-mail, phone, IBAN), `sensor_readings` (48 hourly values per sensor with a
+      daily rhythm) and `vehicles` (licence plate, driver).
+    - The geometry is random but always valid and inside the municipality. Every address lies
+      inside its building, every building inside its parcel and inside the district of its
+      `district_id`, so `ST_Within` / `ST_Contains` find real matches.
+    - Normal foreign keys (building → district, street; address → building; parcel → building,
+      owner; reading → sensor; track → vehicle) and a **GiST index** on every geometry column.
+      Views: `district_overview` (buildings, addresses and sensors per district with
+      `ST_Contains`), `address_nearest_sensor` (the nearest active sensor per address with the
+      `<->` operator) and `vehicle_kilometres` (`ST_Length` of the tracks).
+    - pgdemo checks first that PostGIS is installed in the database (and is 3.0 or newer), and
+      uses the schema it is installed in. If it is missing, nothing is created and the message
+      says what to do: a superuser runs `CREATE EXTENSION postgis;` in that database, or the
+      server first needs the PostGIS package. NL only. Code: `postgis.go`.
   - Nibble secure BE / DE / UK, Nibble secure history BE / DE / UK and Nibble enterprise BE / DE / UK: the same tables, keys and rows
     as the Dutch templates, with the personal data of another country and **local column names**
     for the personal data columns (table names stay English). Code: `locale.go`.
@@ -118,9 +154,11 @@ Total rows over all tables:
 | Library | 370 | 3,700 | 37,000 | 370,000 | 3,700,000 | 37,000,000 | 3.7 |
 | School | 515 | 5,150 | 51,500 | 515,000 | 5,150,000 | 51,500,000 | 5.15 |
 | Nibble | 5,395 | 47,645 | 471,545 | 4,710,545 | 47,100,545 | 471,000,545 | 47.1 |
+| Nibble mini | 2,145 | 20,770 | 207,520 | 2,075,020 | 20,750,020 | 207,500,020 | 20.8 |
 | Nibble secure | 5,970 | 52,645 | 521,545 | 5,210,545 | 52,100,545 | 521,000,545 | 52.1 |
 | Nibble secure history | 6,825 | 60,818 | 603,295 | 6,028,045 | 60,275,545 | 602,750,545 | 60.3 |
 | Nibble enterprise | 19,543 | 142,415 | 1,418,102 | 14,174,972 | 141,743,672 | 1,417,430,672 | 141.7 |
+| PostGIS municipality | 1,691 | 7,136 | 71,036 | 710,036 | 7,100,036 | 71,000,036 | 7.1 |
 
 - From Large upwards the total is almost exactly size × rows per unit. At Small it is a little
   higher, because some tables have a minimum (e.g. at least 30 employees) and the lookup tables
@@ -169,7 +207,7 @@ keys, indexes, done); redirect it to keep it.
 |------|---------|
 | 0 | done |
 | 1 | creating failed or was stopped (also: the schema exists and `--drop` was not given); rolled back, nothing was left behind |
-| 2 | arguments, password file or connection; nothing was done |
+| 2 | arguments, password file, connection, or a missing extension (PostGIS for PostGIS municipality); nothing was done |
 
 **Where the program is.** Mac: `/Applications/pgdemo.app/Contents/MacOS/pgdemo`; Linux
 (`install.sh`): `~/.local/bin/pgdemo` or `/usr/local/bin/pgdemo`; Windows: `pgdemo.exe` in the
@@ -215,12 +253,16 @@ fyne package --name "PG Demo"   # creates PG Demo.app
 | `passfile.go`  | The PostgreSQL password file (.pgpass) for the command line |
 | `console_windows.go` | Windows: output of the command line in the command prompt |
 | `ui.go`        | Fyne window, options, log, progress, dialogs          |
-| `db.go`        | Connection, transaction, CREATE/COPY/constraints      |
+| `ui_about.go`  | Help → About: icon, version, the Nibbler animation, connection |
+| `internal/nibbler/nibbler.go` | The 8-bit Nibbler animation of the About window (the same as in QNibbler and pgTestBuilder) |
+| `db.go`        | Connection, transaction, extension check, CREATE/COPY/constraints |
 | `templates.go` | The schema types (tables, DDL, views, row generators) |
 | `nibble.go`    | The Nibble schema type (relationship-heavy)           |
+| `nibble_mini.go` | Nibble mini: a smaller Nibble for testing Parent only |
 | `nibble_secure.go` | Nibble secure: Nibble plus sensitive data         |
 | `nibble_history.go` | Nibble secure history: Nibble secure plus `his_` tables |
 | `nibble_enterprise.go` | Nibble enterprise: core + HR + fleet, three schemas |
+| `postgis.go`   | PostGIS municipality: geometry in EPSG:28992 (needs PostGIS 3) |
 | `locale.go`    | Country versions (BE, DE, UK): values, IDs, column renames |
 | `version.go`   | Version (set by the package script) and the app icon (`Icon.png`) |
 | `build/package.sh` | Builds the distribution packages (see below) |

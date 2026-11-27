@@ -27,7 +27,7 @@ import (
 const (
 	exitOK     = 0
 	exitFailed = 1 // creating failed or was stopped; rolled back, nothing was left behind
-	exitSetup  = 2 // arguments, password file or connection: nothing was done
+	exitSetup  = 2 // arguments, password file, connection or a missing extension: nothing was done
 )
 
 // isCommandLine: any argument means the command line, never the window; a
@@ -105,7 +105,8 @@ per connection: host:port:database:user:password
 Exit codes:
   0  done
   1  creating failed or was stopped; rolled back, nothing was left behind
-  2  arguments, password file or connection; nothing was done
+  2  arguments, password file, connection or a missing extension (PostGIS);
+     nothing was done
 
 Example:
   pgdemo create --host db1 --database lab --template nibble-secure \
@@ -293,6 +294,8 @@ func cliRun(o Options, out io.Writer) int {
 	switch {
 	case err != nil && (ctx.Err() != nil || errors.Is(err, context.Canceled)):
 		return fail(exitFailed, "stopped (interrupt); everything was rolled back")
+	case errors.As(err, new(*ExtensionError)):
+		return fail(exitSetup, "%v; nothing was created", err)
 	case err != nil && strings.Contains(err.Error(), "Drop existing schema"):
 		// the window's wording; on the command line it is --drop
 		msg, _, _ := strings.Cut(err.Error(), ":")
@@ -316,7 +319,7 @@ func exitText(code int) string {
 	case exitFailed:
 		return "creating failed or was stopped; nothing was left behind"
 	}
-	return "arguments, password file or connection; nothing was done"
+	return "arguments, password file, connection or a missing extension; nothing was done"
 }
 
 func portOr5432(p string) string {

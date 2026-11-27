@@ -17,6 +17,7 @@ func main() {
 	w := a.NewWindow("PostgreSQL Demo Schema Builder " + version)
 	u := newUI(a, w)
 	w.SetContent(u.build())
+	w.SetMainMenu(u.mainMenu()) // Help → About (ui_about.go)
 	w.Resize(fyne.NewSize(1100, 720))
 	w.Show()
 	u.showLogin(true) // connection popup on startup
